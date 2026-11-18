@@ -1,0 +1,87 @@
+# The label scheme: tags merged from the tags written in notes.jsonl.
+#
+# `from` lists the original note tags folded into each tag; the merge is
+# applied when reading notes, so notes.jsonl itself is never changed. Every
+# tag used in notes.jsonl must appear under some `from`, or the build stops.
+# `definition` is what the LLM labeller was given for each tag.
+
+tags:
+  agreement:
+    from: [agreement]
+    definition: >-
+      A reply that agrees with, approves or accepts the comment it replies
+      to, with no new request of its own (e.g. "agree", "ok", "nice catch,
+      agree to update").
+  disagreement:
+    from: [disagreement]
+    definition: >-
+      A reply that pushes back on, qualifies or disputes the comment it
+      replies to, or says the request can't be done as asked.
+  wording:
+    from: [wording, typography]
+    definition: >-
+      Changes the wording or punctuation of the text without changing what
+      it claims: replacement words typed over a strikeout or caret,
+      rephrasings, punctuation, odd characters or symbols.
+  overclaiming:
+    from: [overclaiming, qualifier]
+    definition: >-
+      The text claims too much or too certainly; the comment softens it
+      ("can" to "may help"), adds a qualifier ("one survey showed",
+      "(terms and conditions apply)") or flags an overstatement.
+  adding text:
+    from: [adding text, additional text request]
+    definition: >-
+      Adds new content, or asks for content to be added, beyond rewording:
+      extra items in a list, missing safety information, a disclaimer or
+      sentence.
+  removing text:
+    from: [removing text, removing redundant information]
+    definition: >-
+      Deletes text or asks for it to be removed: an empty strikeout over
+      prose, or a comment saying a passage doesn't belong, is redundant or
+      should follow wording already approved elsewhere.
+  information quality:
+    from: [information quality, contradiction, image change request]
+    definition: >-
+      Questions whether the content is medically or factually right or
+      consistent: inaccuracies, contradictions between sentences, confusing
+      lists, an image that is unrealistic for the condition.
+  reference request:
+    from: [reference request]
+    definition: >-
+      Asks for a reference, link or supporting source to be added for a
+      statement, or asks to see material the piece points to before it can
+      be approved.
+  reference problem:
+    from: [questioning reference, incorrect reference, removing reference, ai link]
+    definition: >-
+      Says an existing reference is wrong, doesn't support the statement,
+      cites only an abstract, is an unsuitable source (e.g. the company's
+      own site, a ChatGPT tracking link), or should be deleted; includes an
+      empty strikeout over a citation.
+  references:
+    from: [references]
+    definition: >-
+      Reference annotations that paste the supporting source passage
+      (source title plus quoted text), notes that references were added or
+      replaced, and general instructions about tagging and linking
+      references.
+  record:
+    from: [record]
+    definition: >-
+      The author recording a change they made in response to review
+      ("added X as requested", "changed to Y as requested").
+  extra info:
+    from: [extra info]
+    definition: >-
+      Administrative or context information about the submission rather
+      than the text: what the piece is and where it will live, job numbers,
+      related documents, copyright or process notes.
+  no tag:
+    from: []
+    definition: >-
+      Annotations that carry no reviewable content: empty marks with no
+      text, citation links that only name a source document such as
+      "Product Leaflet - Dosing (v1.0)", and housekeeping like "stet,
+      addressed in a separate comment".

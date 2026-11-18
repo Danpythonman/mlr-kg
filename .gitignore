@@ -1,0 +1,24 @@
+# This repo is code only. Never commit review data or anything built from it:
+# the PDFs, the labels and every output quote confidential client material.
+*.pdf
+*.jsonl
+*.parquet
+*.graphml
+*.csv
+*.sig
+out/
+output/
+data/
+.cache/
+kg_overview.html
+handoff/
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/

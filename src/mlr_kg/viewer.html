@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MLR Knowledge Graph</title>
+<style>
+  :root { --bg: #ffffff; --panel: #f6f7f9; --text: #1d2125; --muted: #6b6f76; --line: #d9dce1; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15171a; --panel: #1e2125; --text: #e6e8eb; --muted: #9aa0a8; --line: #33383e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text);
+         display: grid; grid-template-columns: 300px 1fr 360px; height: 100vh; overflow: hidden; }
+  aside { background: var(--panel); padding: 14px; overflow-y: auto; border-right: 1px solid var(--line); }
+  #info { border-right: 0; border-left: 1px solid var(--line); }
+  #graph { position: relative; background: var(--bg); }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 6px; }
+  input[type=search], select { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+                               background: var(--bg); color: var(--text); font: inherit; }
+  label.kind { display: flex; align-items: center; gap: 6px; margin: 2px 0; cursor: pointer; }
+  .sw { width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex: none; }
+  .count { margin-left: auto; color: var(--muted); font-size: 12px; }
+  button { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--text); cursor: pointer; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  #info .kindtag { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+                   padding: 1px 6px; border-radius: 3px; color: #fff; }
+  #info .text { white-space: pre-wrap; margin: 8px 0; }
+  #info dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px; margin: 8px 0; font-size: 13px; }
+  #info dt { color: var(--muted); }
+  #info dd { margin: 0; word-break: break-word; }
+  .nb { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line);
+        border-radius: 0; padding: 5px 2px; background: none; }
+  .nb:hover { background: rgba(128,128,128,.1); }
+  .nb .rel { font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace; }
+  #results .nb { font-size: 13px; }
+  #status { position: absolute; left: 10px; bottom: 8px; font-size: 12px; color: var(--muted); }
+  @media (max-width: 900px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 60vh auto; overflow: auto; height: auto; }
+    aside, #info { border: 0; }
+  }
+</style>
+</head>
+<body>
+<aside>
+  <h1>MLR knowledge graph</h1>
+  <div class="muted" id="summary"></div>
+  <h2>Search</h2>
+  <input type="search" id="q" placeholder="Text, author, reference…">
+  <div id="results"></div>
+  <h2>Brand</h2>
+  <select id="brand"><option value="">All brands</option></select>
+  <h2>Show</h2>
+  <div id="kinds"></div>
+  <h2>Layout</h2>
+  <div class="row">
+    <button id="layout">Stop layout</button>
+    <button id="labels">Labels: auto</button>
+    <button id="reset">Reset view</button>
+  </div>
+  <p class="muted">Click a node to see it and its neighbours; click empty space to clear.
+    Sentences without comments and plain passages are left out
+    (they are in kg_full.graphml).</p>
+</aside>
+<div id="graph"><div id="status"></div></div>
+<aside id="info"><p class="muted">Nothing selected.</p></aside>
+
+<script type="module">
+import { MultiDirectedGraph } from 'https://cdn.jsdelivr.net/npm/graphology@0.25.4/+esm';
+import Sigma from 'https://cdn.jsdelivr.net/npm/sigma@3.0.0/+esm';
+import forceAtlas2 from 'https://cdn.jsdelivr.net/npm/graphology-layout-forceatlas2@0.10.1/+esm';
+import FA2Layout from 'https://cdn.jsdelivr.net/npm/graphology-layout-forceatlas2@0.10.1/worker/+esm';
+
+const DATA = /*DATA*/null;
+
+const graph = new MultiDirectedGraph();
+DATA.nodes.forEach(n => graph.addNode(n.key, n.attributes));
+DATA.edges.forEach(e => graph.addEdge(e.source, e.target, e.attributes));
+
+const KIND_COLOURS = DATA.colours;
+const hidden = new Set();
+let brand = '';
+let selected = null;
+let neighbours = new Set();
+let labelMode = 'auto';
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const visible = n => {
+  const a = graph.getNodeAttributes(n);
+  return !hidden.has(a.kind) && (!brand || !a.brand || a.brand === brand);
+};
+
+const renderer = new Sigma(graph, document.getElementById('graph'), {
+  defaultEdgeColor: 'rgba(140,140,140,0.25)',
+  labelRenderedSizeThreshold: 9,
+  labelColor: { color: getComputedStyle(document.body).color },
+  zIndex: true,
+  nodeReducer: (n, a) => {
+    const r = { ...a };
+    if (!visible(n)) { r.hidden = true; return r; }
+    if (selected) {
+      if (n === selected) { r.highlighted = true; r.zIndex = 2; r.forceLabel = true; }
+      else if (neighbours.has(n)) { r.zIndex = 1; r.forceLabel = labelMode !== 'off'; }
+      else { r.color = 'rgba(160,160,160,0.18)'; r.label = ''; r.zIndex = 0; }
+    }
+    if (labelMode === 'off' && n !== selected) r.label = '';
+    return r;
+  },
+  edgeReducer: (e, a) => {
+    const r = { ...a };
+    const [s, t] = graph.extremities(e);
+    if (!visible(s) || !visible(t)) { r.hidden = true; return r; }
+    if (selected) {
+      if (s === selected || t === selected) { r.color = 'rgba(90,90,90,0.85)'; r.size = 1.5; }
+      else r.hidden = true;
+    }
+    return r;
+  },
+});
+
+// Layout: ForceAtlas2 in a web worker, stopped after a few seconds.
+const settings = { ...forceAtlas2.inferSettings(graph), barnesHutOptimize: true, slowDown: 3 };
+const fa2 = new FA2Layout(graph, { settings });
+const layoutBtn = document.getElementById('layout');
+function setLayout(on) {
+  if (on) { fa2.start(); layoutBtn.textContent = 'Stop layout'; }
+  else { fa2.stop(); layoutBtn.textContent = 'Run layout'; }
+}
+setLayout(true);
+setTimeout(() => setLayout(false), 9000);
+layoutBtn.onclick = () => setLayout(!fa2.isRunning());
+
+document.getElementById('labels').onclick = e => {
+  labelMode = { auto: 'all', all: 'off', off: 'auto' }[labelMode];
+  e.target.textContent = 'Labels: ' + labelMode;
+  renderer.setSetting('labelRenderedSizeThreshold', labelMode === 'all' ? 0 : 9);
+  renderer.refresh();
+};
+document.getElementById('reset').onclick = () => { select(null); renderer.getCamera().animatedReset(); };
+
+// Kinds and brands.
+const kindsDiv = document.getElementById('kinds');
+const counts = {};
+graph.forEachNode((n, a) => { counts[a.kind] = (counts[a.kind] || 0) + 1; });
+DATA.kinds.forEach(k => {
+  const l = document.createElement('label');
+  l.className = 'kind';
+  l.innerHTML = `<input type="checkbox" checked><span class="sw" style="background:${KIND_COLOURS[k]}"></span>${k}<span class="count">${counts[k] || 0}</span>`;
+  l.querySelector('input').onchange = ev => {
+    ev.target.checked ? hidden.delete(k) : hidden.add(k);
+    renderer.refresh();
+  };
+  kindsDiv.appendChild(l);
+});
+const brandSel = document.getElementById('brand');
+DATA.brands.forEach(b => brandSel.add(new Option(b, b)));
+brandSel.onchange = () => { brand = brandSel.value; renderer.refresh(); };
+document.getElementById('summary').textContent =
+  `${graph.order.toLocaleString()} nodes · ${graph.size.toLocaleString()} edges`;
+
+// Selection and the info panel.
+const info = document.getElementById('info');
+function nbButton(rel, dir, n) {
+  const a = graph.getNodeAttributes(n);
+  return `<button class="nb" data-n="${esc(n)}"><span class="rel">${dir === 'out' ? '→' : '←'} ${esc(rel)}</span><br>`
+    + `<span class="sw" style="background:${KIND_COLOURS[a.kind]}"></span> ${esc(a.kind)}: ${esc(a.full_label || a.label)}</button>`;
+}
+function select(n) {
+  selected = n;
+  neighbours = new Set(n ? graph.neighbors(n) : []);
+  renderer.refresh();
+  if (!n) { info.innerHTML = '<p class="muted">Nothing selected.</p>'; return; }
+  const a = graph.getNodeAttributes(n);
+  const rows = Object.entries(a.info || {}).filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && !v.length))
+    .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(Array.isArray(v) ? v.join(', ') : v)}</dd>`).join('');
+  const nb = [];
+  graph.forEachOutEdge(n, (e, ea, s, t) => nb.push(nbButton(ea.rel, 'out', t)));
+  graph.forEachInEdge(n, (e, ea, s) => nb.push(nbButton(ea.rel, 'in', s)));
+  info.innerHTML = `<span class="kindtag" style="background:${KIND_COLOURS[a.kind]}">${esc(a.kind)}</span>`
+    + `<div class="text">${esc(a.text || a.full_label || a.label)}</div><dl>${rows}</dl>`
+    + `<h2>Neighbours (${nb.length})</h2>${nb.join('')}`;
+  info.querySelectorAll('.nb').forEach(b => b.onclick = () => focus(b.dataset.n));
+}
+function focus(n) {
+  select(n);
+  const d = renderer.getNodeDisplayData(n);
+  if (d) renderer.getCamera().animate({ x: d.x, y: d.y, ratio: 0.25 }, { duration: 500 });
+}
+renderer.on('clickNode', ({ node }) => select(node));
+renderer.on('clickStage', () => select(null));
+renderer.on('enterNode', () => { document.getElementById('graph').style.cursor = 'pointer'; });
+renderer.on('leaveNode', () => { document.getElementById('graph').style.cursor = ''; });
+
+// Search.
+const results = document.getElementById('results');
+document.getElementById('q').oninput = ev => {
+  const q = ev.target.value.trim().toLowerCase();
+  if (q.length < 2) { results.innerHTML = ''; return; }
+  const hits = [];
+  graph.forEachNode((n, a) => {
+    if (hits.length < 40 && visible(n) && (a.search || '').includes(q)) hits.push(n);
+  });
+  results.innerHTML = hits.map(n => {
+    const a = graph.getNodeAttributes(n);
+    return `<button class="nb" data-n="${esc(n)}"><span class="sw" style="background:${KIND_COLOURS[a.kind]}"></span> `
+      + `${esc(a.kind)}: ${esc(a.full_label || a.label)}</button>`;
+  }).join('') || '<p class="muted">No matches.</p>';
+  results.querySelectorAll('.nb').forEach(b => b.onclick = () => focus(b.dataset.n));
+};
+</script>
+</body>
+</html>
