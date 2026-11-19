@@ -1,0 +1,4 @@
+Names you will see: ACME Health is the agency that writes the materials, so a
+reply like "ACME to update" or "ACME to delete this sentence" is the author's
+side accepting the change. XY is Example Partners, the agency that submits
+the Brand Z materials.

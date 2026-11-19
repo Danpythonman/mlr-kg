@@ -67,6 +67,8 @@ def configure(cfg: Config) -> None:
     global CFG
     CFG = cfg
     raw.configure(cfg)
+    labels.use_taxonomy(cfg.taxonomy)
+    items.cache_clear()
 
 
 @functools.cache

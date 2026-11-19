@@ -22,3 +22,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# A real glossary names clients and agencies; only the example is committed.
+glossary*.txt
+!glossary.example.txt
+labelling/

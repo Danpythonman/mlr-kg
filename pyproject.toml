@@ -14,6 +14,10 @@ dependencies = [
     "rapidfuzz>=3.5",
 ]
 
+[project.optional-dependencies]
+# Only for `mlr-kg label ping/run` (the paid commands): uv sync --extra label
+label = ["anthropic==0.111.0", "openai==2.43.0"]   # the versions the labels were made with
+
 [project.scripts]
 mlr-kg = "mlr_kg.cli:main"
 

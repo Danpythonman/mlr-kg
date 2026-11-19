@@ -8,6 +8,11 @@ variable (handy in a `.env`-style shell script):
     --llm-labels  MLR_LLM_LABELS   LLM labels, llm_labels.jsonl
     --out         MLR_OUT          output folder (created if missing)
 
+Optional, with no environment variable:
+
+    --taxonomy    tag scheme to use instead of the bundled taxonomy.yaml
+    --glossary    text file of names the LLM should know (label commands)
+
 Inputs are checked before any work starts, and a missing or wrong path stops
 the run with a message saying which one and how to set it.
 """
@@ -39,6 +44,8 @@ class Config:
     notes: Path
     llm_labels: Path
     out: Path
+    taxonomy: Path | None = None
+    glossary: Path | None = None
 
     @property
     def nodes(self) -> Path:
@@ -51,6 +58,11 @@ class Config:
     @property
     def cache(self) -> Path:
         return self.out / '.cache'
+
+    @property
+    def label_dir(self) -> Path:
+        """LLM answers cache and spend ledger (they quote the data too)."""
+        return self.out / 'labelling'
 
 
 def _check_jsonl(p: Path, opt: str, needed: set[str], what: str) -> str | None:
@@ -79,32 +91,61 @@ def _check_pdfs(p: Path) -> str | None:
     return None
 
 
-def resolve(pdfs=None, notes=None, llm_labels=None, out=None, *, need_inputs=True) -> Config:
+GRAPH_INPUTS = ('pdfs', 'notes', 'llm_labels', 'out')
+
+
+def resolve(pdfs=None, notes=None, llm_labels=None, out=None, *, need=GRAPH_INPUTS,
+            need_inputs=True, llm_labels_out=False, overwrite=False,
+            taxonomy=None, glossary=None) -> Config:
     """Paths from options or environment, checked; every problem is reported
-    at once. With need_inputs=False (commands that only read a built graph)
-    only --out is required."""
+    at once.
+
+    need: which of INPUTS this command requires.
+    need_inputs=False: a command that only reads a built graph (needs --out).
+    llm_labels_out: --llm-labels is written, not read; its folder must exist,
+        and an existing file is only replaced with overwrite=True.
+    """
+    if not need_inputs:
+        need = ('out',)
     given = {'pdfs': pdfs, 'notes': notes, 'llm_labels': llm_labels, 'out': out}
-    names = list(INPUTS) if need_inputs else ['out']
     paths: dict[str, Path] = {}
     problems: list[str] = []
-    for name in names:
+    for name in INPUTS:
         env, opt, what = INPUTS[name]
         value = given[name] or os.environ.get(env)
         if value:
             paths[name] = Path(value).expanduser().resolve()
-        else:
+        elif name in need:
             problems.append(f'no location given for {what}: pass {opt} PATH or set {env}.')
+    paths = {k: v for k, v in paths.items() if k in need}
+
+    def check_llm_out(p: Path) -> str | None:
+        if not p.parent.is_dir():
+            return f'--llm-labels {p}: folder {p.parent} does not exist.'
+        if p.exists() and not overwrite:
+            return (f'--llm-labels {p} already exists; pass --overwrite to replace it '
+                    '(or give a new file name).')
+        return None
 
     checks = {
         'pdfs': _check_pdfs,
         'notes': lambda p: _check_jsonl(p, '--notes', {'event', 'note_id'},
                                         'a notes.jsonl event log'),
-        'llm_labels': lambda p: _check_jsonl(p, '--llm-labels', {'target', 'tags', 'note'},
-                                             'an llm_labels.jsonl file'),
+        'llm_labels': check_llm_out if llm_labels_out else
+        (lambda p: _check_jsonl(p, '--llm-labels', {'target', 'tags', 'note'},
+                                'an llm_labels.jsonl file')),
     }
     for name, check in checks.items():
         if name in paths and (msg := check(paths[name])):
             problems.append(msg)
+    if 'llm_labels' in paths and 'notes' in paths and paths['llm_labels'] == paths['notes']:
+        problems.append('--llm-labels and --notes are the same file.')
+    extra: dict[str, Path | None] = {}
+    for name, value, opt in (('taxonomy', taxonomy, '--taxonomy'),
+                             ('glossary', glossary, '--glossary')):
+        extra[name] = Path(value).expanduser().resolve() if value else None
+        if extra[name] and not extra[name].is_file():
+            problems.append(f'{opt} {extra[name]}: no such file.')
     if 'out' in paths:
         out_p = paths['out']
         for name in ('notes', 'llm_labels'):
@@ -118,6 +159,5 @@ def resolve(pdfs=None, notes=None, llm_labels=None, out=None, *, need_inputs=Tru
                     break
     if problems:
         raise ConfigError('\n  ' + '\n  '.join(problems))
-    if not need_inputs:
-        return Config(Path(), Path(), Path(), paths['out'])
-    return Config(paths['pdfs'], paths['notes'], paths['llm_labels'], paths['out'])
+    return Config(paths.get('pdfs', Path()), paths.get('notes', Path()),
+                  paths.get('llm_labels', Path()), paths['out'], **extra)

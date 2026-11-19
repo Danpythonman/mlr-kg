@@ -27,14 +27,25 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-TAXONOMY = Path(__file__).with_name('taxonomy.yaml')
+BUNDLED_TAXONOMY = Path(__file__).with_name('taxonomy.yaml')
+TAXONOMY = BUNDLED_TAXONOMY      # replaced by use_taxonomy() for --taxonomy
 SEED = 0
 TEST_FRACTION = 0.5
+
+
+def use_taxonomy(path: Path | None) -> None:
+    global TAXONOMY
+    TAXONOMY = path or BUNDLED_TAXONOMY
+    taxonomy.cache_clear()
 
 
 @cache
 def taxonomy() -> dict:
     return yaml.safe_load(TAXONOMY.read_text())['tags']
+
+
+def tag_names() -> list[str]:
+    return list(taxonomy())
 
 
 def merge_map() -> dict[str, str]:
@@ -124,7 +135,7 @@ def items(ann: pd.DataFrame, notes_path: Path) -> pd.DataFrame:
     df['split'] = df.split.fillna('unlabelled')
     df['gold'] = df.gold.map(lambda g: list(g) if isinstance(g, list) else [])
     df['my_note'] = df.my_note.fillna('')
-    return df
+    return df.sort_values(['file', 'page', 'created', 'uid'], kind='stable').reset_index(drop=True)
 
 
 def llm_labels(path: Path) -> pd.DataFrame:
